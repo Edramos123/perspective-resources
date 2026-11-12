@@ -50,6 +50,8 @@ The FE has only those two remote providers per site. Older `<Site>MQTT` and `Tag
 
 ## 4. Data paths
 
+Full diagram of all three environments: [mqtt-sparkplug-flow.md](mqtt-sparkplug-flow.md).
+
 ```
 PLC ─driver─► DC ─MQTT Transmission (Sparkplug B, TLS)─► TagIO Distributor ─► MQTT Engine
                                                                                │
