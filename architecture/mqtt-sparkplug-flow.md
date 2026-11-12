@@ -1,0 +1,226 @@
+# MQTT / Sparkplug B communication flow (Orlando example)
+
+All three environments side by side. Solid lines are OPC, MQTT, JDBC and HTTPS; dashed lines are the Gateway Network. Orange boxes are tag providers. See [mqtt-sparkplug-architecture.md](mqtt-sparkplug-architecture.md) for the rules behind it.
+
+GitHub renders the diagram below. A static copy is in [mqtt-sparkplug-flow.png](mqtt-sparkplug-flow.png), and the raw source is [mqtt-sparkplug-flow.mmd](mqtt-sparkplug-flow.mmd).
+
+```mermaid
+flowchart LR
+    subgraph LEG["Legend"]
+        direction TB
+        L1["Solid line: OPC / MQTT / JDBC / HTTPS"]
+        L2["Dashed line: Gateway Network"]
+        L3["Orange box: tag provider"]
+        L4["&lt;x&gt; = name not yet confirmed"]
+    end
+    PLC["Orlando PLCs<br/>CC101 · &lt;Driver&gt;<br/>CC102 · &lt;Driver&gt;<br/>CC103 · &lt;Driver&gt;<br/>CCF02 · &lt;Driver&gt;<br/>CCF03 · &lt;Driver&gt;<br/>CCF03A · &lt;Driver&gt;"]
+    XOPC["External OPC servers<br/>KEPServerEX"]
+    AD["Active Directory"]
+    subgraph PROD["PROD"]
+        direction LR
+        subgraph DC_P["Data Collector · &lt;Orlando DC PROD&gt;"]
+            DRV_P["PLC Drivers<br/>(6 device group(s))"]
+            OPCC_P["OPC Connections<br/>(1)"]
+            DCTP_P["TP: [Orlando]<br/>Standard"]
+            ALM_P["DC Alarm Eval<br/>(device diagnostics)"]
+            TXM_P["MQTT Transmission<br/>tx ARG-COR-PROD<br/>ARG-ABC / ORLANDO-DC"]
+            TXTP_P["TP: [MQTT Transmission]<br/>Module (MQTT Transmission)"]
+            SYSDC_P["TP: [System]<br/>Built-in"]
+            RAJ_P["Remote Alarm Journal<br/>→ Orlando_ALM"]
+            GANDC_P["GAN<br/>outgoing x2"]
+            DRV_P --> DCTP_P
+            OPCC_P --> DCTP_P
+            DCTP_P --> ALM_P --> RAJ_P --> GANDC_P
+            DCTP_P --> TXM_P --> TXTP_P
+            DCTP_P --> GANDC_P
+        end
+        subgraph TIO_P["TagIO · &lt;TagIO PROD&gt;"]
+            DIST_P["MQTT Distributor"]
+            ENG_P["MQTT Engine<br/>Primary Host ID"]
+            ENGTP_P["TP: [MQTT Engine]<br/>Module (MQTT Engine)<br/>Edge Nodes/ARG-ABC/ORLANDO-DC"]
+            TP_P["TP: [Orlando]<br/>Standard<br/>reference tags"]
+            SYSTIO_P["TP: [System]<br/>Built-in"]
+            TALM_P["TagIO Alarm Eval"]
+            GANTIO_P["GAN"]
+            AJ_P["Alarm Journal<br/>Orlando_ALM"]
+            SF_P["Store and Forward"]
+            TDB_P["DB Conn<br/>ARG_COR_ORLD"]
+            DIST_P --> ENG_P --> ENGTP_P -->|"reference"| TP_P
+            TP_P --> TALM_P --> AJ_P
+            TP_P --> GANTIO_P
+            GANTIO_P --> AJ_P
+            AJ_P --> SF_P --> TDB_P
+        end
+        DB_P[("SQL Server<br/>ARG_COR_ORLD")]
+        subgraph FE_P["Frontend · &lt;FE PROD&gt;"]
+            GANFE_P["GAN"]
+            R1_P["Remote TP: Orlando<br/>→ &lt;TagIO PROD&gt; / [Orlando]<br/>read-only · alarms enabled"]
+            R2_P["Remote TP: OrlandoDC<br/>Diagnostics* only<br/>→ &lt;Orlando DC PROD&gt; / [Orlando]<br/>alarms: open item"]
+            SYSFE_P["TP: [System]<br/>Built-in"]
+            FDB_P["DB Conn<br/>ARG_COR_ORLD"]
+            IDP_P["Identity Provider<br/>AD"]
+            AST_P["Alarm Status Table"]
+            PROJ_P["Perspective HMI<br/>(read-only)"]
+            GANFE_P --> R1_P & R2_P
+            R1_P --> AST_P --> PROJ_P
+            R1_P --> PROJ_P
+            R2_P --> PROJ_P
+            FDB_P -->|"alarm history"| PROJ_P
+            IDP_P --> PROJ_P
+        end
+        CL_P["Operators"]
+        TXM_P -->|"Sparkplug B · TLS"| DIST_P
+        GANDC_P -.->|"alarm events"| GANTIO_P
+        GANDC_P -.->|"[Orlando] Diagnostics* only<br/>(diagnostics + engineer controls)"| GANFE_P
+        GANTIO_P -.->|"[Orlando] process tags + alarms"| GANFE_P
+        TDB_P -->|"write"| DB_P
+        DB_P -->|"read"| FDB_P
+        PROJ_P -->|"HTTPS"| CL_P
+    end
+    subgraph STG["STAGING"]
+        direction LR
+        subgraph DC_S["Data Collector · &lt;Orlando DC STG&gt;"]
+            DRV_S["PLC Drivers<br/>(6 device group(s))"]
+            OPCC_S["OPC Connections<br/>(1)"]
+            DCTP_S["TP: [Orlando]<br/>Standard"]
+            ALM_S["DC Alarm Eval<br/>(device diagnostics)"]
+            TXM_S["MQTT Transmission<br/>tx ARG-COR-STG<br/>ARG-ABC / ORLANDO-DC"]
+            TXTP_S["TP: [MQTT Transmission]<br/>Module (MQTT Transmission)"]
+            SYSDC_S["TP: [System]<br/>Built-in"]
+            RAJ_S["Remote Alarm Journal<br/>→ Orlando_ALM"]
+            GANDC_S["GAN<br/>outgoing x2"]
+            DRV_S --> DCTP_S
+            OPCC_S --> DCTP_S
+            DCTP_S --> ALM_S --> RAJ_S --> GANDC_S
+            DCTP_S --> TXM_S --> TXTP_S
+            DCTP_S --> GANDC_S
+        end
+        subgraph TIO_S["TagIO · ARG-COR-STG-TG"]
+            DIST_S["MQTT Distributor"]
+            ENG_S["MQTT Engine<br/>Primary Host ID"]
+            ENGTP_S["TP: [MQTT Engine]<br/>Module (MQTT Engine)<br/>Edge Nodes/ARG-ABC/ORLANDO-DC"]
+            TP_S["TP: [Orlando]<br/>Standard<br/>reference tags"]
+            SYSTIO_S["TP: [System]<br/>Built-in"]
+            TALM_S["TagIO Alarm Eval"]
+            GANTIO_S["GAN"]
+            AJ_S["Alarm Journal<br/>Orlando_ALM"]
+            SF_S["Store and Forward"]
+            TDB_S["DB Conn<br/>ARG_COR_ORLD"]
+            DIST_S --> ENG_S --> ENGTP_S -->|"reference"| TP_S
+            TP_S --> TALM_S --> AJ_S
+            TP_S --> GANTIO_S
+            GANTIO_S --> AJ_S
+            AJ_S --> SF_S --> TDB_S
+        end
+        DB_S[("SQL Server<br/>ARG_COR_ORLD")]
+        subgraph FE_S["Frontend · ARG-COR-STG-FE"]
+            GANFE_S["GAN"]
+            R1_S["Remote TP: Orlando<br/>→ ARG-COR-STG-TG / [Orlando]<br/>read-only · alarms enabled"]
+            R2_S["Remote TP: OrlandoDC<br/>Diagnostics* only<br/>→ &lt;Orlando DC STG&gt; / [Orlando]<br/>alarms: open item"]
+            SYSFE_S["TP: [System]<br/>Built-in"]
+            FDB_S["DB Conn<br/>ARG_COR_ORLD"]
+            IDP_S["Identity Provider<br/>AD"]
+            AST_S["Alarm Status Table"]
+            PROJ_S["Perspective HMI<br/>(read-only)"]
+            GANFE_S --> R1_S & R2_S
+            R1_S --> AST_S --> PROJ_S
+            R1_S --> PROJ_S
+            R2_S --> PROJ_S
+            FDB_S -->|"alarm history"| PROJ_S
+            IDP_S --> PROJ_S
+        end
+        CL_S["Operators"]
+        TXM_S -->|"Sparkplug B · TLS"| DIST_S
+        GANDC_S -.->|"alarm events"| GANTIO_S
+        GANDC_S -.->|"[Orlando] Diagnostics* only<br/>(diagnostics + engineer controls)"| GANFE_S
+        GANTIO_S -.->|"[Orlando] process tags + alarms"| GANFE_S
+        TDB_S -->|"write"| DB_S
+        DB_S -->|"read"| FDB_S
+        PROJ_S -->|"HTTPS"| CL_S
+    end
+    subgraph DEV["DEV"]
+        direction LR
+        subgraph DC_D["Data Collector · ARG-AB-ORLD-DC"]
+            DRV_D["PLC Drivers<br/>(6 device group(s))"]
+            OPCC_D["OPC Connections<br/>(1)"]
+            DCTP_D["TP: [Orlando]<br/>Standard"]
+            ALM_D["DC Alarm Eval<br/>(device diagnostics)"]
+            TXM_D["MQTT Transmission<br/>tx ARG-COR-DEV<br/>ARG-ABC / ORLANDO-DC"]
+            TXTP_D["TP: [MQTT Transmission]<br/>Module (MQTT Transmission)"]
+            SYSDC_D["TP: [System]<br/>Built-in"]
+            RAJ_D["Remote Alarm Journal<br/>→ Orlando_ALM"]
+            GANDC_D["GAN<br/>outgoing x2"]
+            DRV_D --> DCTP_D
+            OPCC_D --> DCTP_D
+            DCTP_D --> ALM_D --> RAJ_D --> GANDC_D
+            DCTP_D --> TXM_D --> TXTP_D
+            DCTP_D --> GANDC_D
+        end
+        subgraph TIO_D["TagIO · ARG-COR-DEV-TG"]
+            DIST_D["MQTT Distributor"]
+            ENG_D["MQTT Engine<br/>ARG-COR-DEV-TG-MQTT-HOST"]
+            ENGTP_D["TP: [MQTT Engine]<br/>Module (MQTT Engine)<br/>Edge Nodes/ARG-ABC/ORLANDO-DC"]
+            TP_D["TP: [Orlando]<br/>Standard<br/>reference tags"]
+            SYSTIO_D["TP: [System]<br/>Built-in"]
+            TALM_D["TagIO Alarm Eval"]
+            GANTIO_D["GAN"]
+            AJ_D["Alarm Journal<br/>Orlando_ALM"]
+            SF_D["Store and Forward"]
+            TDB_D["DB Conn<br/>ARG_COR_ORLD"]
+            DIST_D --> ENG_D --> ENGTP_D -->|"reference"| TP_D
+            TP_D --> TALM_D --> AJ_D
+            TP_D --> GANTIO_D
+            GANTIO_D --> AJ_D
+            AJ_D --> SF_D --> TDB_D
+        end
+        DB_D[("SQL Server<br/>ARG_COR_ORLD")]
+        subgraph FE_D["Frontend · ARG-COR-DEV-FE"]
+            GANFE_D["GAN"]
+            R1_D["Remote TP: Orlando<br/>→ ARG-COR-DEV-TG / [Orlando]<br/>read-only · alarms enabled"]
+            R2_D["Remote TP: OrlandoDC<br/>Diagnostics* only<br/>→ ARG-AB-ORLD-DC / [Orlando]<br/>alarms: open item"]
+            SYSFE_D["TP: [System]<br/>Built-in"]
+            FDB_D["DB Conn<br/>ARG_COR_ORLD"]
+            IDP_D["Identity Provider<br/>internal users (no AD)"]
+            AST_D["Alarm Status Table"]
+            PROJ_D["Perspective HMI<br/>(read-only)"]
+            GANFE_D --> R1_D & R2_D
+            R1_D --> AST_D --> PROJ_D
+            R1_D --> PROJ_D
+            R2_D --> PROJ_D
+            FDB_D -->|"alarm history"| PROJ_D
+            IDP_D --> PROJ_D
+        end
+        CL_D["Operators"]
+        TXM_D -->|"Sparkplug B · TLS"| DIST_D
+        GANDC_D -.->|"alarm events"| GANTIO_D
+        GANDC_D -.->|"[Orlando] Diagnostics* only<br/>(diagnostics + engineer controls)"| GANFE_D
+        GANTIO_D -.->|"[Orlando] process tags + alarms"| GANFE_D
+        TDB_D -->|"write"| DB_D
+        DB_D -->|"read"| FDB_D
+        PROJ_D -->|"HTTPS"| CL_D
+    end
+    PLC --> DRV_P & DRV_S & DRV_D
+    XOPC -.-> OPCC_P & OPCC_S & OPCC_D
+    AD -->|"LDAP"| IDP_P & IDP_S
+    classDef field fill:#eeeeee,stroke:#555,color:#222
+    classDef dc fill:#dbeafe,stroke:#2563eb,color:#1e3a8a
+    classDef tio fill:#dcfce7,stroke:#16a34a,color:#14532d
+    classDef sql fill:#ede9fe,stroke:#7c3aed,color:#3b0764
+    classDef fe fill:#fee2e2,stroke:#dc2626,color:#7f1d1d
+    classDef tp fill:#ffedd5,stroke:#ea580c,stroke-width:2px,color:#7c2d12
+    classDef gan fill:#ffffff,stroke:#111,stroke-dasharray: 4 3,color:#111
+    classDef unsure fill:#fef9c3,stroke:#ca8a04,color:#713f12
+    classDef legend fill:#ffffff,stroke:#999,color:#333
+    class PLC,XOPC,AD,CL_P,CL_S,CL_D field
+    class DRV_P,TXM_P,OPCC_P,DRV_S,TXM_S,OPCC_S,DRV_D,TXM_D,OPCC_D dc
+    class ALM_P,RAJ_P,ALM_S,RAJ_S,ALM_D,RAJ_D dc
+    class DIST_P,ENG_P,TALM_P,AJ_P,SF_P,TDB_P,DIST_S,ENG_S,TALM_S,AJ_S,SF_S,TDB_S,DIST_D,ENG_D,TALM_D,AJ_D,SF_D,TDB_D tio
+    class DB_P,DB_S,DB_D sql
+    class FDB_P,IDP_P,AST_P,PROJ_P,FDB_S,IDP_S,AST_S,PROJ_S,FDB_D,IDP_D,AST_D,PROJ_D fe
+    class DCTP_P,TXTP_P,SYSDC_P,ENGTP_P,TP_P,SYSTIO_P,R1_P,R2_P,SYSFE_P,DCTP_S,TXTP_S,SYSDC_S,ENGTP_S,TP_S,SYSTIO_S,R1_S,R2_S,SYSFE_S,DCTP_D,TXTP_D,SYSDC_D,ENGTP_D,TP_D,SYSTIO_D,R1_D,R2_D,SYSFE_D tp
+    class GANDC_P,GANTIO_P,GANFE_P,GANDC_S,GANTIO_S,GANFE_S,GANDC_D,GANTIO_D,GANFE_D gan
+    class L1,L2,L3,L4 legend
+    style PROD fill:#f7fdf9,stroke:#16a34a,stroke-width:2px
+    style STG fill:#fffbf2,stroke:#d97706,stroke-width:2px
+    style DEV fill:#faf7ff,stroke:#7c3aed,stroke-width:2px
+```
